@@ -22,7 +22,20 @@ use rust_analyzer::{
 };
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use vfs::AbsPathBuf;
+#[cfg(target_env = "gnu")]
+mod malloc {
+    use std::os::raw::c_int;
+    const M_MMAP_THRESHOLD: c_int = -3;
 
+    extern "C" {
+        fn mallopt(param: c_int, value: c_int) -> c_int;
+    }
+    pub(crate) fn limit_mmap_threshold() {
+        unsafe {
+            mallopt(M_MMAP_THRESHOLD, 65536);
+        }
+    }
+}
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -32,6 +45,8 @@ static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 fn main() -> anyhow::Result<ExitCode> {
+    #[cfg(target_env = "gnu")]
+    malloc::limit_mmap_threshold();
     if std::env::var("RA_RUSTC_WRAPPER").is_ok() {
         rustc_wrapper::main().map_err(Into::into)
     } else {
